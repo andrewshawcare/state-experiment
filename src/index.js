@@ -1,80 +1,112 @@
+import "regenerator-runtime/runtime";
 import React from "react";
 import ReactDOM from "react-dom";
+import { createStore, applyMiddleware, compose } from "redux";
+import { createActions, handleActions } from "redux-actions";
 import produce from "immer";
-import "regenerator-runtime/runtime";
+import createSagaMiddleware from "redux-saga";
+import { call, put, takeEvery } from 'redux-saga/effects';
 
-const RequestComponent = ({ id, isComplete = false, waitInMilliseconds }) => {
-    return <li>{
+function RequestComponent({ id, isComplete = false }) {
+    return <div>{
         isComplete ?
-            <span><strong>Request {id + 1}</strong> completed in <strong>{waitInMilliseconds} milliseconds</strong>.</span> :
+            <span>Request {id + 1} completed.</span> :
             <span>Loading...</span>
-    }</li>;
+    }</div>;
 }
+React.memo(RequestComponent);
 
-const ResponseComponent = ({ id, waitInMilliseconds }) => {
-    return <li key={id}><strong>Response {id + 1}</strong> received in <strong>{waitInMilliseconds} milliseconds</strong>.</li>
+function ResponseComponent({ id, waitInMilliseconds }) {
+    return <div key={id}>Response {id + 1} received in {waitInMilliseconds} milliseconds.</div>
 }
+React.memo(ResponseComponent);
+
+const {
+    requestReceived,
+    requestCompleted,
+    responseReceived
+} = createActions(
+    'REQUEST_RECEIVED',
+    'REQUEST_COMPLETED',
+    'RESPONSE_RECEIVED'
+);
+
+const defaultState = { requests: [], responses: [] };
+
+const reducer = handleActions(
+    {
+        [requestReceived]: produce((state, action) => {
+            state.requests.push(action.payload);
+        }),
+        [requestCompleted]: produce((state, action) => {
+            state.requests[action.payload.id].isComplete = true;
+        }),
+        [responseReceived]: produce((state, action) => {
+            state.responses.push(action.payload);
+        })
+    },
+    defaultState
+);
+const sagaMiddleware = createSagaMiddleware();
+const composeEnhancers = (
+    typeof window !== 'undefined' &&
+    window.__REDUX_DEVTOOLS_EXTENSION_COMPOSE__
+) || compose;
+const store = createStore(reducer, defaultState, composeEnhancers(applyMiddleware(sagaMiddleware)));
 
 const render = (state) => {
     ReactDOM.render(
         <div style={{display: "flex"}}>
             <div>
                 <h2>Requests</h2>
-                <ol>
-                    { state.requests.map((request) =>
-                        <RequestComponent
-                            key={request.id}
-                            id={request.id}
-                            isComplete={request.isComplete}
-                            waitInMilliseconds={request.waitInMilliseconds}
-                        />
-                    ) }
-                </ol>
+                { state.requests.map((request) =>
+                    <RequestComponent
+                        key={request.id}
+                        id={request.id}
+                        isComplete={request.isComplete}
+                    />
+                ) }
             </div>
             <div>
                 <h2>Responses</h2>
-                <ol>
-                    { state.responses.map((response, index) =>
-                        <ResponseComponent
-                            key={index}
-                            id={response.id}
-                            waitInMilliseconds={response.data.waitInMilliseconds}
-                        />
-                    ) }
-                </ol>
+                { state.responses.map((response, index) =>
+                    <ResponseComponent
+                        key={index}
+                        id={response.id}
+                        waitInMilliseconds={response.data.waitInMilliseconds}
+                    />
+                ) }
             </div>
         </div>,
         document.getElementById("container")
     );
 }
+store.subscribe(() => render(store.getState()));
 
-const requestCompleteReducer = produce((draftState, response) => {
-    draftState.requests[response.id].waitInMilliseconds = response.data.waitInMilliseconds;
-    draftState.requests[response.id].isComplete = true;
-    draftState.responses.push(response);
-});
-
-const randomWait = async ({ maxWaitInMilliseconds = 1000 }) => {
+const wait = async (waitInMilliseconds = 0) => {
     return new Promise((resolve) => {
-        const timeoutInMilliseconds = Math.floor(Math.random() * maxWaitInMilliseconds);
-        setTimeout(() => resolve({ waitInMilliseconds: timeoutInMilliseconds }), timeoutInMilliseconds);
+        setTimeout(() => resolve({ waitInMilliseconds }), waitInMilliseconds);
     });
-};
+}
 
+function* fetchResponse(action) {
+    const data = yield call(wait, action.payload.request);
+    yield put(requestCompleted({ id: action.payload.id, isComplete: true }));
+    yield put(responseReceived({ id: action.payload.id, data }));
+}
+
+function* requestReceivedSaga() {
+    yield takeEvery('REQUEST_RECEIVED', fetchResponse);
+}
+
+sagaMiddleware.run(requestReceivedSaga);
+
+const requestCount = 100;
 const maxWaitInMilliseconds = 5000;
-const requestCount = 40;
-
-const promises = Array(requestCount)
+const requests = Array(requestCount)
     .fill(0)
-    .map(() => randomWait({ maxWaitInMilliseconds }));
+    .map(() => Math.round(Math.random() * maxWaitInMilliseconds));
 
-(async (state) => {
-    await Promise.all(promises.map(async (promise, index) => {
-        const data = await promise;
-        state = requestCompleteReducer(state, { id: index, data });
-        render(state);
-    }));
-})({
-    requests: promises.map((_, index) => ({ id: index, isComplete: false })),
-    responses: []
+requests.map((request, index) => {
+    store.dispatch(requestReceived({ id: index, isComplete: false, request }));
 });
