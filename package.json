@@ -4,9 +4,10 @@
   "description": "",
   "main": "src/index.js",
   "scripts": {
-    "build": "babel src -d lib",
+    "build": "babel src -d lib && webpack",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node index.js"
+    "prestart": "npm run build",
+    "start": "http-server"
   },
   "repository": {
     "type": "git",
@@ -19,10 +20,12 @@
   },
   "homepage": "https://github.com/andrewshawcare/state-experiment#readme",
   "devDependencies": {
+    "@babel/cli": "7.21.5",
     "@babel/core": "^7.14.3",
     "@babel/preset-env": "^7.14.4",
     "@babel/preset-react": "^7.13.13",
     "babel-loader": "^8.2.2",
+    "http-server": "14.1.1",
     "immer": "^9.0.2",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
