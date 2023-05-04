@@ -4,10 +4,10 @@
   "description": "",
   "main": "src/index.js",
   "scripts": {
-    "build": "babel src -d lib && webpack",
+    "build": "webpack && cp src/index.html dist",
     "test": "echo \"Error: no test specified\" && exit 1",
     "prestart": "npm run build",
-    "start": "http-server"
+    "start": "http-server dist"
   },
   "repository": {
     "type": "git",
